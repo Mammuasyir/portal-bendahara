@@ -91,11 +91,12 @@ export const RekapSPPPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  const handleOpenPaymentForStudent = async (student: StudentSPPRecord, month?: MonthName) => {
+  const handleOpenPaymentForStudent = async (student: StudentSPPRecord, _month?: MonthName) => {
     setSelectedStudent(student);
-    const firstUnpaid = student.monthlyBills.find((b) => b.status === 'menunggak')?.month || month || 'Agustus';
+    const firstUnpaidBill = student.monthlyBills.find((b) => b.status !== 'lunas');
+    const firstUnpaid = firstUnpaidBill?.month || 'Juli';
     setPaymentMonth(firstUnpaid);
-    setPaymentNominal(DEFAULT_MONTHLY_SPP);
+    setPaymentNominal(firstUnpaidBill?.nominal || DEFAULT_MONTHLY_SPP);
     setPaymentMethod('Potong Saldo Tabungan');
     setPaymentNotes('');
     setIsDetailModalOpen(true);
@@ -153,10 +154,27 @@ export const RekapSPPPage: React.FC = () => {
 
   const handlePreparePaymentConfirm = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedStudent) return;
+
     if (paymentNominal <= 0) {
       alert('Nominal pembayaran harus lebih dari Rp0.');
       return;
     }
+
+    // Validasi urutan pembayaran (wajib melunasi bulan tertunggak terdahulu)
+    const firstUnpaidBill = selectedStudent.monthlyBills.find((b) => b.status !== 'lunas');
+    if (firstUnpaidBill && paymentMonth !== firstUnpaidBill.month) {
+      const currentSelectedBill = selectedStudent.monthlyBills.find((b) => b.month === paymentMonth);
+      if (currentSelectedBill && currentSelectedBill.monthIndex > firstUnpaidBill.monthIndex) {
+        alert(
+          `Pembayaran SPP harus dilakukan secara berurutan!\n\nSilakan selesaikan pembayaran SPP Bulan ${firstUnpaidBill.month} terlebih dahulu sebelum membayar bulan ${paymentMonth}.`
+        );
+        setPaymentMonth(firstUnpaidBill.month);
+        setPaymentNominal(firstUnpaidBill.nominal || DEFAULT_MONTHLY_SPP);
+        return;
+      }
+    }
+
     const isDeduction =
       paymentMethod.toLowerCase().includes('potong') ||
       paymentMethod.toLowerCase().includes('saldo') ||
@@ -765,37 +783,64 @@ _Bendahara & Tata Usaha Keuangan Sekolah_`;
               </div>
             </div>
 
-            {/* Rincian Status 12 Bulan Grid */}
+            {/* Rincian Status 12 Bulan Grid (Wajib Berurutan) */}
             <div>
-              <span className="text-xs font-bold text-slate-700 block mb-2">Pilih Bulan untuk Pembayaran/Penyesuaian:</span>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-slate-700 block">Pilih Bulan Pembayaran:</span>
+                <span className="text-[10px] text-violet-700 font-bold bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">
+                  Wajib Berurutan (Juli ➔ Juni)
+                </span>
+              </div>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                {selectedStudent.monthlyBills.map((b) => {
-                  const isSelected = paymentMonth === b.month;
-                  return (
-                    <button
-                      key={b.month}
-                      type="button"
-                      onClick={() => {
-                        setPaymentMonth(b.month);
-                        setPaymentNominal(b.nominal || DEFAULT_MONTHLY_SPP);
-                      }}
-                      className={`p-2 rounded-xl border text-center transition-all ${
-                        isSelected
-                          ? 'border-violet-600 bg-violet-50 text-violet-900 ring-2 ring-violet-500'
-                          : b.status === 'lunas'
-                          ? 'border-emerald-200 bg-emerald-50/50 text-emerald-800'
-                          : b.status === 'menunggak'
-                          ? 'border-rose-300 bg-rose-50 text-rose-800'
-                          : 'border-slate-200 bg-slate-50 text-slate-600'
-                      }`}
-                    >
-                      <span className="text-xs font-bold block">{b.month}</span>
-                      <span className="text-[9px] font-semibold block mt-0.5">
-                        {b.status === 'lunas' ? '✓ Lunas' : b.status === 'menunggak' ? '! Nunggak' : 'Mendatang'}
-                      </span>
-                    </button>
-                  );
-                })}
+                {(() => {
+                  const firstUnpaidBill = selectedStudent.monthlyBills.find((b) => b.status !== 'lunas');
+                  const firstUnpaidIndex = firstUnpaidBill ? firstUnpaidBill.monthIndex : 13;
+
+                  return selectedStudent.monthlyBills.map((b) => {
+                    const isSelected = paymentMonth === b.month;
+                    const isNextToPay = b.monthIndex === firstUnpaidIndex;
+                    const isLockedFuture = b.monthIndex > firstUnpaidIndex;
+
+                    return (
+                      <button
+                        key={b.month}
+                        type="button"
+                        onClick={() => {
+                          if (isLockedFuture) {
+                            alert(
+                              `Pembayaran SPP harus berurutan!\n\nSilakan selesaikan tagihan Bulan ${firstUnpaidBill?.month} terlebih dahulu sebelum membayar bulan ${b.month}.`
+                            );
+                            setPaymentMonth(firstUnpaidBill?.month || 'Juli');
+                            setPaymentNominal(firstUnpaidBill?.nominal || DEFAULT_MONTHLY_SPP);
+                            return;
+                          }
+                          setPaymentMonth(b.month);
+                          setPaymentNominal(b.nominal || DEFAULT_MONTHLY_SPP);
+                        }}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          isSelected
+                            ? 'border-violet-600 bg-violet-50 text-violet-900 ring-2 ring-violet-500 font-bold shadow-sm'
+                            : b.status === 'lunas'
+                            ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800'
+                            : isNextToPay
+                            ? 'border-amber-400 bg-amber-50 text-amber-900 font-bold shadow-sm ring-1 ring-amber-400/50'
+                            : 'border-slate-200 bg-slate-50/70 text-slate-400 opacity-60'
+                        }`}
+                      >
+                        <span className="text-xs font-bold block">{b.month}</span>
+                        <span className="text-[9px] font-semibold block mt-0.5">
+                          {b.status === 'lunas'
+                            ? '✓ Lunas'
+                            : isNextToPay
+                            ? '➔ Bayar Ini'
+                            : b.status === 'menunggak'
+                            ? '! Nunggak'
+                            : 'Mendatang'}
+                        </span>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             </div>
 

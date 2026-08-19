@@ -108,5 +108,5 @@ export interface CreateSaveMoneyPayload {
   kategori: '1' | '0' | boolean; // true / "1" = menabung (+), false / "0" = mengambil (-)
   tag?: string;
   ket_money?: string;
-  invoice_money?: File | null;
+  invoice_money?: string | File | null;
 }

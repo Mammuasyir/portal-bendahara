@@ -21,47 +21,7 @@ import {
 let cachedStudents: StudentSPPRecord[] = JSON.parse(JSON.stringify(MOCK_STUDENTS_SPP_2026));
 let cachedClassButtons: NormalizedClassButton[] = [];
 
-// Map nama bulan ke index tahun ajaran (1 = Juli ... 12 = Juni)
-const MONTH_NAME_TO_ACADEMIC_INDEX: Record<string, number> = {
-  juli: 1,
-  jul: 1,
-  agustus: 2,
-  agu: 2,
-  ags: 2,
-  aug: 2,
-  august: 2,
-  september: 3,
-  sep: 3,
-  sept: 3,
-  oktober: 4,
-  okt: 4,
-  oct: 4,
-  october: 4,
-  november: 5,
-  nov: 5,
-  desember: 6,
-  des: 6,
-  dec: 6,
-  december: 6,
-  januari: 7,
-  jan: 7,
-  january: 7,
-  februari: 8,
-  feb: 8,
-  february: 8,
-  maret: 9,
-  mar: 9,
-  march: 9,
-  april: 10,
-  apr: 10,
-  mei: 11,
-  may: 11,
-  juni: 12,
-  jun: 12,
-  june: 12,
-};
-
-// Map bulan kalender Masehi (1..12) ke index tahun ajaran santri (Juli = 1 ... Juni = 12)
+// Map index bulan kalender masehi (1=Jan .. 12=Des) ke index tahun ajaran (1=Juli .. 12=Juni)
 const CALENDAR_MONTH_TO_ACADEMIC_INDEX: Record<number, number> = {
   7: 1, // Juli
   8: 2, // Agustus
@@ -77,6 +37,32 @@ const CALENDAR_MONTH_TO_ACADEMIC_INDEX: Record<number, number> = {
   6: 12, // Juni
 };
 
+// Map nama bulan SPP ke nomor bulan kalender (01..12) & year offset
+export const MONTH_TO_CALENDAR_NUMBER: Record<MonthName, { monthNum: string; yearOffset: number }> = {
+  Juli: { monthNum: '07', yearOffset: 0 },
+  Agustus: { monthNum: '08', yearOffset: 0 },
+  September: { monthNum: '09', yearOffset: 0 },
+  Oktober: { monthNum: '10', yearOffset: 0 },
+  November: { monthNum: '11', yearOffset: 0 },
+  Desember: { monthNum: '12', yearOffset: 0 },
+  Januari: { monthNum: '01', yearOffset: 1 },
+  Februari: { monthNum: '02', yearOffset: 1 },
+  Maret: { monthNum: '03', yearOffset: 1 },
+  April: { monthNum: '04', yearOffset: 1 },
+  Mei: { monthNum: '05', yearOffset: 1 },
+  Juni: { monthNum: '06', yearOffset: 1 },
+};
+
+/**
+ * Helper: Mengenerate format ket_money standar Backend (YYYY-MM)
+ * Contoh: Juli 2025/2026 -> "2025-07", Januari 2025/2026 -> "2026-01"
+ */
+export function formatKetMoneySPP(month: MonthName, baseYear: number): string {
+  const info = MONTH_TO_CALENDAR_NUMBER[month] || { monthNum: '07', yearOffset: 0 };
+  const calYear = baseYear + info.yearOffset;
+  return `${calYear}-${info.monthNum}`;
+}
+
 /**
  * Helper: Mengecek apakah transaksi SPP masuk ke cakupan Tahun Ajaran (baseYear)
  * Thang format: {tahun_awal}_{semester} (misal 2025_1, 2025_2 -> baseYear 2025)
@@ -90,7 +76,7 @@ function isTransactionInAcademicYear(tx: SaveMoneyTransaction, baseYear: number)
     }
   }
 
-  // 2. Cek dari teks keterangan (misal: "2025/2026" atau "2026/2027")
+  // 2. Cek dari teks keterangan (misal: "2025-07" atau "2025/2026" atau "2026/2027")
   const ketLower = (tx.keterangan || '').toLowerCase();
   if (ketLower.includes(`${baseYear}/${baseYear + 1}`)) return true;
 
@@ -110,23 +96,21 @@ function isTransactionInAcademicYear(tx: SaveMoneyTransaction, baseYear: number)
 
 /**
  * Helper: Memetakan transaksi riwayat santri dari backend API menjadi 12 bulan SPP
- * dengan multi-strategy parsing dan dukungan pembayaran multi-bulan akumulatif
+ * Mengikuti spesifikasi Backend: 1 transaksi = 1 bulan spesifik sesuai ket_money (format: YYYY-MM)
  */
 function buildMonthlyBillsFromTransactions(
   baseYear: number,
   txList: SaveMoneyTransaction[]
 ): SPPMonthRecord[] {
-  // Ambil HANYA transaksi penarikan/pemotongan saldo (kategori: 0 / Mengambil (-) / money_flag_id: 2) yang bertag SPP
-  // dan sesuai dengan tahun ajaran yang dipilih (baseYear)
+  // Ambil transaksi penarikan/pemotongan saldo yang bertag SPP dan sesuai Tahun Ajaran
   const sppTransactions = (txList || []).filter((t) => {
     const tagLower = (t.tag || '').toLowerCase();
     const ketLower = (t.keterangan || '').toLowerCase();
     const isTagSPP = tagLower === 'spp' || tagLower === 'tag_spp';
-    const isKetSPP = ketLower.includes('spp') || ketLower.includes('syahriah');
+    const isKetSPP = ketLower.includes('spp') || ketLower.includes('syahriah') || /\b20\d{2}-(0[1-9]|1[0-2])\b/.test(ketLower);
 
     if (!isTagSPP && !isKetSPP) return false;
 
-    // Pastikan transaksi merupakan PENARIKAN / PEMOTONGAN SALDO (kategori: 0 / money_flag_id: 2 / Mengambil)
     const isWithdrawal =
       t.jenis_transaksi?.includes('Mengambil') ||
       t.jenis_transaksi?.includes('Tarik') ||
@@ -138,14 +122,12 @@ function buildMonthlyBillsFromTransactions(
 
     if (!isWithdrawal) return false;
 
-    // Filter kecocokan Tahun Ajaran berdasarkan thang
     return isTransactionInAcademicYear(t, baseYear);
   });
 
   const now = new Date();
   const currentCalYear = now.getFullYear();
-  const currentCalMonth = now.getMonth() + 1; // 1-12 (8 = Agustus)
-  // Tahun awal ajaran saat ini: Juli–Desember -> currentCalYear, Jan–Juni -> currentCalYear - 1
+  const currentCalMonth = now.getMonth() + 1; // 1-12
   const currentAcademicBaseYear = currentCalMonth >= 7 ? currentCalYear : currentCalYear - 1;
   const currentAcademicMonthIdx = CALENDAR_MONTH_TO_ACADEMIC_INDEX[currentCalMonth] || 2;
 
@@ -156,67 +138,49 @@ function buildMonthlyBillsFromTransactions(
   >();
 
   // Pass 1: Proses setiap transaksi penarikan SPP
+  // Sinkron dengan Backend: 1 transaksi mencatat 1 bulan spesifik sesuai ket_money (format: YYYY-MM)
   sppTransactions.forEach((tx) => {
     const amount = Number(tx.jumlah || DEFAULT_MONTHLY_SPP);
-    // Hitung berapa bulan yang dicakup oleh nominal transaksi ini (misal: Rp8.000.000 = 2 bulan)
-    const monthsCovered = Math.max(1, Math.round(amount / DEFAULT_MONTHLY_SPP));
-    const perMonthNominal = Math.round(amount / monthsCovered);
-
-    const ketLower = (tx.keterangan || '').toLowerCase();
-    let explicitMonthIdx: number | null = null;
-
-    // 1. Cek apakah ada nama bulan tertentu di keterangan
-    for (const [mName, mIdx] of Object.entries(MONTH_NAME_TO_ACADEMIC_INDEX)) {
-      if (ketLower.includes(mName)) {
-        explicitMonthIdx = mIdx;
-        break;
-      }
-    }
-
-    // 2. Jika tidak ada di keterangan, cek dari tanggal transaksi
-    if (!explicitMonthIdx && tx.tanggal_transaksi) {
-      const isoMatch = tx.tanggal_transaksi.match(/\b\d{4}-(\d{2})-\d{2}\b/);
-      const idMatch = tx.tanggal_transaksi.match(/\b\d{1,2}[\/\-](\d{1,2})[\/\-]\d{4}\b/);
-
-      let calMonth: number | null = null;
-      if (isoMatch) calMonth = parseInt(isoMatch[1], 10);
-      else if (idMatch) calMonth = parseInt(idMatch[1], 10);
-
-      if (calMonth && CALENDAR_MONTH_TO_ACADEMIC_INDEX[calMonth]) {
-        explicitMonthIdx = CALENDAR_MONTH_TO_ACADEMIC_INDEX[calMonth];
-      }
-    }
-
     const paidAtStr = tx.tanggal_transaksi || `${now.toLocaleDateString('id-ID')} 10:00 WIB`;
     const isWithdrawal = String(tx.jenis_transaksi || '').includes('Mengambil') || String(tx.money_flag_id) === '2';
     const methodStr =
       tx.keterangan ||
       (isWithdrawal ? 'Pemotongan Saldo Tabungan (SPP)' : 'Setoran SPP Terintegrasi API');
 
-    let allocatedCount = 0;
+    const ketText = (tx.keterangan || '').trim();
+    let targetAcademicIdx: number | null = null;
 
-    // Alokasi ke bulan eksplisit jika belum lunas
-    if (explicitMonthIdx && !monthPaymentMap.has(explicitMonthIdx)) {
-      monthPaymentMap.set(explicitMonthIdx, {
-        nominal: perMonthNominal,
+    // 1. Deteksi format standar BE (YYYY-MM) dari ket_money / keterangan (contoh: "2025-07", "2025-08", "2026-01")
+    const yyyyMmMatch = ketText.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/);
+    if (yyyyMmMatch) {
+      const year = parseInt(yyyyMmMatch[1], 10);
+      const calMonth = parseInt(yyyyMmMatch[2], 10);
+      const expectedOffset = calMonth >= 7 ? 0 : 1;
+      if (year === baseYear + expectedOffset) {
+        targetAcademicIdx = CALENDAR_MONTH_TO_ACADEMIC_INDEX[calMonth] || null;
+      }
+    }
+
+    // 2. Alokasikan 1 transaksi = 1 bulan spesifik yang dituju
+    if (targetAcademicIdx && !monthPaymentMap.has(targetAcademicIdx)) {
+      monthPaymentMap.set(targetAcademicIdx, {
+        nominal: amount,
         paidAt: paidAtStr,
         paymentMethod: methodStr,
         notes: tx.keterangan || undefined,
       });
-      allocatedCount++;
-    }
-
-    // Jika transaksi mencakup lebih dari 1 bulan (misal: 2 bulan / Rp8.000.000) atau belum ada bulan eksplisit:
-    // Alokasikan ke bulan-bulan tertunggak terdahulu yang belum lunas (dimulai dari Juli = index 1, Agustus = index 2, dst.)
-    for (let idx = 1; idx <= 12 && allocatedCount < monthsCovered; idx++) {
-      if (!monthPaymentMap.has(idx)) {
-        monthPaymentMap.set(idx, {
-          nominal: perMonthNominal,
-          paidAt: paidAtStr,
-          paymentMethod: methodStr,
-          notes: tx.keterangan || undefined,
-        });
-        allocatedCount++;
+    } else {
+      // Fallback: alokasikan berurutan ke bulan pertama yang belum lunas
+      for (let idx = 1; idx <= 12; idx++) {
+        if (!monthPaymentMap.has(idx)) {
+          monthPaymentMap.set(idx, {
+            nominal: amount,
+            paidAt: paidAtStr,
+            paymentMethod: methodStr,
+            notes: tx.keterangan || undefined,
+          });
+          break;
+        }
       }
     }
   });
@@ -563,7 +527,9 @@ export const rekapSppService = {
 
     const now = new Date();
     const formattedPaidAt = `${now.toLocaleDateString('id-ID')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} WIB`;
-    const ketMoneyStr = `Pembayaran SPP Bulan ${payload.month} ${student.academicYear} | ${payload.paymentMethod}${payload.notes ? ' | ' + payload.notes : ''}`;
+    const baseYear = parseInt(student.academicYear.split('/')[0], 10) || 2025;
+    const ketMoneyFormatted = formatKetMoneySPP(payload.month, baseYear); // Format: "2025-07"
+    const invoiceDesc = `Pembayaran SPP Bulan ${payload.month} ${student.academicYear} | ${payload.paymentMethod}${payload.notes ? ' | ' + payload.notes : ''}`;
 
     // 1. Eksekusi request API nyata ke backend /api/staff/save-money/store jika belum dieksekusi pemanggil
     if (!payload.skipApiStore) {
@@ -582,44 +548,24 @@ export const rekapSppService = {
           sirkulasi: payload.nominal,
           kategori: targetKategori,
           tag: 'spp',
-          ket_money: ketMoneyStr,
+          ket_money: ketMoneyFormatted,
+          invoice_money: invoiceDesc,
         });
       } catch (apiErr) {
         console.warn('API store returned notice (melanjutkan update cache UI):', apiErr);
       }
     }
 
-    // 2. Hitung jumlah bulan yang dicakup oleh nominal pembayaran ini
-    const monthsCovered = Math.max(1, Math.round(payload.nominal / DEFAULT_MONTHLY_SPP));
-    const perMonthNominal = Math.round(payload.nominal / monthsCovered);
-
-    // Update bulan yang dipilih
+    // 2. Sinkron dengan BE: Update 1 bulan yang dipilih sesuai ket_money (format YYYY-MM)
     student.monthlyBills[billIndex] = {
       ...student.monthlyBills[billIndex],
-      nominal: perMonthNominal,
+      nominal: payload.nominal,
       status: 'lunas',
       paidAt: formattedPaidAt,
-      paymentMethod: payload.paymentMethod || 'Transfer Bank BSI VA',
+      paymentMethod: payload.paymentMethod || 'Potong Saldo Tabungan',
       transactionRef: `SPP-${now.getFullYear()}-${payload.month.slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
       notes: payload.notes,
     };
-
-    // Jika nominal mencakup lebih dari 1 bulan (misal 2 bulan = 8jt), lunasi juga bulan-bulan tertunggak lainnya
-    let extraAllocated = 1;
-    for (let i = 0; i < student.monthlyBills.length && extraAllocated < monthsCovered; i++) {
-      if (student.monthlyBills[i].status === 'menunggak' && i !== billIndex) {
-        student.monthlyBills[i] = {
-          ...student.monthlyBills[i],
-          nominal: perMonthNominal,
-          status: 'lunas',
-          paidAt: formattedPaidAt,
-          paymentMethod: payload.paymentMethod || 'Transfer Bank BSI VA',
-          transactionRef: `SPP-${now.getFullYear()}-${student.monthlyBills[i].month.slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          notes: `Pelunasan akumulatif multi-bulan (${payload.notes || 'SPP'})`,
-        };
-        extraAllocated++;
-      }
-    }
 
     // Recalculate student totals
     const totalTarget = student.monthlyBills.reduce((sum, b) => sum + b.nominal, 0);
