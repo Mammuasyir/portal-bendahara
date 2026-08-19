@@ -1,0 +1,72 @@
+import { SchoolExpense, ExpenseCategory } from '../types/expense';
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'Operasional',
+  'Gaji',
+  'Sarana',
+  'Konsumsi',
+  'Lain-lain',
+];
+
+export const MOCK_EXPENSES: SchoolExpense[] = [
+  {
+    id: 'exp-2026-08-01',
+    title: 'Pembelian Bahan Makanan Dapur Asrama Santri',
+    amount: 14500000,
+    category: 'Konsumsi',
+    date: '2026-08-15',
+    description: 'Belanja stok logistik beras, daging, dan sayuran pekan ke-3 Agustus',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202608-01',
+  },
+  {
+    id: 'exp-2026-08-02',
+    title: 'Tagihan Listrik & Internet Fiber Optik Sekolah',
+    amount: 6800000,
+    category: 'Operasional',
+    date: '2026-08-12',
+    description: 'Pembayaran rutin PLN gardu asrama dan langganan Indihome dedicated 200 Mbps',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202608-02',
+  },
+  {
+    id: 'exp-2026-08-03',
+    title: 'Honorarium Guru Tamu & Ustadz Pembina Tahfidz',
+    amount: 9500000,
+    category: 'Gaji',
+    date: '2026-08-05',
+    description: 'Honor 4 Ustadz pembina asrama & halaqah tahfidz pekanan',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202608-03',
+  },
+  {
+    id: 'exp-2026-08-04',
+    title: 'Perbaikan AC Laboratorium Komputer & Asrama Putra',
+    amount: 2350000,
+    category: 'Sarana',
+    date: '2026-08-03',
+    description: 'Servis berkala 6 unit pendingin ruangan dan penggantian kapasitor',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202608-04',
+  },
+  {
+    id: 'exp-2026-07-01',
+    title: 'Konsumsi Rapat Pleno Dewan Guru Awal Tahun Ajaran',
+    amount: 1850000,
+    category: 'Konsumsi',
+    date: '2026-07-28',
+    description: 'Snack box dan makan siang 45 staf pengajar',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202607-01',
+  },
+  {
+    id: 'exp-2026-07-02',
+    title: 'Pengadaan Meja Kursi Belajar Tambahan Kelas X',
+    amount: 8200000,
+    category: 'Sarana',
+    date: '2026-07-15',
+    description: '15 set meja kursi kayu mahoni standar ruang kelas',
+    createdByName: 'Ustadzah Sarah (TU)',
+    receiptNumber: 'KWT-EXP-202607-02',
+  },
+];

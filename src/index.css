@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900;
+  }
+}
+
+/* Custom utility for touch interactions */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
