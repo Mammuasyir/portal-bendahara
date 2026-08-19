@@ -342,16 +342,38 @@ export const rekapSppService = {
     statusFilter?: 'ALL' | 'lancar' | 'menunggak' | 'lunas_penuh';
     search?: string;
   }): Promise<StudentSPPRecord[]> {
-    const selectedThang = params?.academicYear || '2026/2027';
-    const baseYear = parseInt(selectedThang.split('/')[0], 10) || 2026;
+    const selectedThang = params?.academicYear || '2025/2026';
+    const baseYear = parseInt(selectedThang.split('/')[0], 10) || 2025;
+    const thangParam = selectedThang.includes('2025') ? '2025_1' : selectedThang.includes('2026') ? '2026_1' : undefined;
 
     try {
-      // Panggil API live /api/staff/save-money/init
-      const initRes = await tabunganService.init();
-      if (initRes && initRes.users && initRes.users.length > 0) {
-        cachedClassButtons = normalizeClassButtons(initRes.class_buttons);
+      // 1. Coba panggil API live dengan thangParam
+      let initRes: any;
+      try {
+        if (thangParam) {
+          initRes = await tabunganService.init({ thang: thangParam });
+        }
+      } catch {
+        initRes = null;
+      }
 
-        cachedStudents = initRes.users.map((u: any) => {
+      // 2. Jika gagal atau kosong, fallback ke init default tanpa query parameter
+      if (!initRes || !initRes.users || initRes.users.length === 0) {
+        initRes = await tabunganService.init();
+      }
+
+      const rawUsers: any[] =
+        initRes?.users ||
+        (initRes as any)?.data?.users ||
+        (Array.isArray(initRes) ? initRes : []);
+
+      if (rawUsers && rawUsers.length > 0) {
+        const rawButtons = initRes?.class_buttons || (initRes as any)?.data?.class_buttons;
+        cachedClassButtons = normalizeClassButtons(rawButtons);
+
+        const riwayatMap = initRes?.riwayat_per_siswa || (initRes as any)?.data?.riwayat_per_siswa || {};
+
+        cachedStudents = rawUsers.map((u: any) => {
           const rawClassId = u.class_id ?? u.id_kelas ?? u.class;
           const classLabel = resolveStudentClassLabel(u, cachedClassButtons);
 
@@ -360,13 +382,34 @@ export const rekapSppService = {
               ? 'SMP'
               : 'SMK';
 
-          const txList = findStudentTransactions(u, initRes.riwayat_per_siswa || {});
+          const txList = findStudentTransactions(u, riwayatMap);
           const bills = buildMonthlyBillsFromTransactions(baseYear, txList);
           const summary = calculateSummary(bills);
 
           const rawDirectBalance = u.balance ?? u.saldo ?? u.total_saldo ?? u.saldo_akhir;
           const directBalance = rawDirectBalance !== undefined && rawDirectBalance !== null ? Number(rawDirectBalance) : undefined;
           const currentSavings = calculateSavingsBalanceFromTransactions(txList, directBalance);
+
+          // Ambil nomor HP/WA langsung dari key 'phone' pada objek user JSON backend
+          const rawPhone =
+            u.phone ||
+            u.no_hp ||
+            u.no_wa ||
+            u.telepon ||
+            u.telephone ||
+            u.no_telepon ||
+            u.nomor_hp ||
+            u.nomor_wa ||
+            u.phone_number ||
+            u.user_phone ||
+            u.hp ||
+            u.wa ||
+            u.parent_phone ||
+            u.phone_parent ||
+            u.user?.phone ||
+            u.profile?.phone ||
+            '';
+          const realPhone = typeof rawPhone === 'string' ? rawPhone.trim() : (rawPhone ? String(rawPhone).trim() : '');
 
           return {
             id: u.id,
@@ -378,7 +421,8 @@ export const rekapSppService = {
             className: classLabel,
             dormitory: `Asrama Santri (Kelas ${classLabel})`,
             parentName: `Wali dari ${u.name}`,
-            parentPhone: u.phone || '081234567813',
+            parentPhone: realPhone || '-',
+            phone: realPhone,
             academicYear: selectedThang,
             monthlyBills: bills,
             savingsBalance: currentSavings,

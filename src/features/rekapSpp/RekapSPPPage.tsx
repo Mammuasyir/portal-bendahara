@@ -28,11 +28,11 @@ import {
 
 import { NormalizedClassButton } from '../../utils/classHelper';
 
-const ACADEMIC_YEAR_OPTIONS = ['2026/2027', '2025/2026'];
+const ACADEMIC_YEAR_OPTIONS = ['2025/2026', '2026/2027'];
 const JENJANG_OPTIONS = ['ALL', 'SMP', 'SMK'];
 
 export const RekapSPPPage: React.FC = () => {
-  const [academicYear, setAcademicYear] = useState<string>('2026/2027');
+  const [academicYear, setAcademicYear] = useState<string>('2025/2026');
   const [selectedJenjang, setSelectedJenjang] = useState<string>('ALL');
   const [selectedClass, setSelectedClass] = useState<string>('ALL');
   const [classButtons, setClassButtons] = useState<NormalizedClassButton[]>([]);
@@ -57,6 +57,7 @@ export const RekapSPPPage: React.FC = () => {
 
   // WhatsApp Reminder Modal State
   const [reminderStudent, setReminderStudent] = useState<StudentSPPRecord | null>(null);
+  const [reminderPhone, setReminderPhone] = useState<string>('');
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -90,6 +91,29 @@ export const RekapSPPPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleOpenReminder = (student: StudentSPPRecord) => {
+    setReminderStudent(student);
+    const validPhone = student.phone || (student.parentPhone && student.parentPhone !== '-' ? student.parentPhone : '');
+    setReminderPhone(validPhone);
+  };
+
+  const handleSendWhatsAppWeb = (student: StudentSPPRecord) => {
+    const rawPhone = reminderPhone || student.phone || student.parentPhone || '';
+    const cleanDigits = String(rawPhone).replace(/[^0-9]/g, '');
+    const targetPhone = cleanDigits.startsWith('0')
+      ? `62${cleanDigits.slice(1)}`
+      : cleanDigits;
+
+    if (!targetPhone) {
+      alert('Silakan masukkan nomor WhatsApp santri terlebih dahulu.');
+      return;
+    }
+
+    const msg = encodeURIComponent(getWhatsAppMessage(student));
+    window.open(`https://wa.me/${targetPhone}?text=${msg}`, '_blank');
+    setReminderStudent(null);
+  };
 
   const handleOpenPaymentForStudent = async (student: StudentSPPRecord, _month?: MonthName) => {
     setSelectedStudent(student);
@@ -271,13 +295,6 @@ Konfirmasi pembayaran otomatis terverifikasi di Portal Keuangan.
 Jazakumullahu khairan katsiran atas perhatian dan kerjasamanya.
 Wassalamu'alaikum Wr. Wb.
 _Bendahara & Tata Usaha Keuangan Sekolah_`;
-  };
-
-  const handleSendWhatsApp = (student: StudentSPPRecord) => {
-    const msg = encodeURIComponent(getWhatsAppMessage(student));
-    const cleanPhone = student.parentPhone.replace(/[^0-9]/g, '');
-    const formattedPhone = cleanPhone.startsWith('0') ? `62${cleanPhone.slice(1)}` : cleanPhone;
-    window.open(`https://wa.me/${formattedPhone}?text=${msg}`, '_blank');
   };
 
   return (
@@ -710,7 +727,7 @@ _Bendahara & Tata Usaha Keuangan Sekolah_`;
                         <div className="flex items-center justify-center gap-1.5">
                           {isMenunggak && (
                             <button
-                              onClick={() => setReminderStudent(student)}
+                              onClick={() => handleOpenReminder(student)}
                               className="p-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
                               title="Kirim Pengingat WhatsApp ke Wali"
                             >
@@ -1016,35 +1033,54 @@ _Bendahara & Tata Usaha Keuangan Sekolah_`;
               </button>
             </div>
 
-            <div className="text-xs space-y-1">
-              <span className="text-slate-500">Penerima: </span>
-              <strong className="text-slate-900">{reminderStudent.parentName}</strong>
-              <span className="text-slate-500"> ({reminderStudent.parentPhone})</span>
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2.5">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Penerima Pesan:</span>
+                <strong className="text-slate-900 font-bold">{reminderStudent.parentName}</strong>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Nomor WhatsApp Santri / Wali:</span>
+                  {reminderPhone ? (
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      ✓ Terdeteksi dari BE
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      ⚠️ Silakan ketik nomor WA
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={reminderPhone}
+                  onChange={(e) => setReminderPhone(e.target.value)}
+                  placeholder="Contoh: 6281295106399 atau 081234567813"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-slate-900 bg-white"
+                />
+              </div>
             </div>
 
-            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed text-slate-700">
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono whitespace-pre-wrap max-h-52 overflow-y-auto leading-relaxed text-slate-700">
               {getWhatsAppMessage(reminderStudent)}
             </div>
 
             <div className="flex gap-2 pt-2">
               <Button
                 variant="outline"
-                fullWidth
                 onClick={() => setReminderStudent(null)}
+                className="flex-1"
               >
                 Batal
               </Button>
               <Button
                 variant="secondary"
-                fullWidth
                 leftIcon={<Send className="w-4 h-4" />}
-                onClick={() => {
-                  handleSendWhatsApp(reminderStudent);
-                  setReminderStudent(null);
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => handleSendWhatsAppWeb(reminderStudent)}
+                className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
               >
-                Kirim via WhatsApp Web
+                Kirim via WhatsApp
               </Button>
             </div>
           </div>

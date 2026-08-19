@@ -37,6 +37,7 @@ export interface StudentSPPRecord {
   dormitory: string; // e.g. "Asrama Ibnu Sina"
   parentName: string;
   parentPhone: string;
+  phone?: string;
   academicYear: string; // e.g. "2026/2027"
   monthlyBills: SPPMonthRecord[];
   totalTarget: number;
