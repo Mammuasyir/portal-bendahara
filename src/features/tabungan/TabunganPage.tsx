@@ -475,11 +475,11 @@ export const TabunganPage: React.FC = () => {
         {/* Filter Kelas */}
         <div>
           <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Kelas Santri:</label>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex overflow-x-auto no-scrollbar gap-1.5 pb-1 -mx-1 px-1">
             <button
               type="button"
               onClick={() => setSelectedClassId('ALL')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 active-press ${
                 selectedClassId === 'ALL'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -492,7 +492,7 @@ export const TabunganPage: React.FC = () => {
                 key={btn.value}
                 type="button"
                 onClick={() => setSelectedClassId(btn.value)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex-shrink-0 active-press ${
                   selectedClassId === btn.value
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -675,8 +675,11 @@ export const TabunganPage: React.FC = () => {
 
       {/* ─── Modal Input Transaksi (Setor Uang Saku / Tarik Saldo) ─── */}
       {isModalOpen && activeStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom-8 sm:zoom-in-95 pb-safe">
+            {/* Mobile Drag Indicator Handle */}
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto sm:hidden -mt-1 mb-2" />
+
             {/* Header Modal */}
             <div className="flex justify-between items-center">
               <h3 className="text-base font-bold text-slate-900">
@@ -912,8 +915,11 @@ export const TabunganPage: React.FC = () => {
 
       {/* Modal Riwayat Mutasi Siswa (dengan badge tag) */}
       {viewHistoryStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-8 sm:zoom-in-95 pb-safe">
+            {/* Mobile Drag Indicator Handle */}
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto sm:hidden -mt-1 mb-2" />
+
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Riwayat Mutasi Santri</h3>

@@ -29,8 +29,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const visibleItems = BOTTOM_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe">
-      <div className="flex items-center justify-around h-16 px-2 max-w-lg mx-auto">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200/90 pb-safe shadow-lg shadow-slate-900/5">
+      <div className="flex items-center justify-around h-15 px-1 max-w-lg mx-auto">
         {visibleItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -38,14 +38,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               key={item.id}
               onClick={() => onTabChange(item.id)}
               className={`
-                flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors touch-target
-                ${isActive ? 'text-teal-700 font-bold' : 'text-slate-500 hover:text-slate-800'}
+                flex flex-col items-center justify-center flex-1 h-full py-1 transition-all touch-target active-press
+                ${isActive ? 'text-teal-700 font-extrabold' : 'text-slate-400 hover:text-slate-700 font-medium'}
               `}
             >
-              <div className={`p-1 rounded-xl ${isActive ? 'bg-teal-50 text-teal-700' : ''}`}>
+              <div className={`p-1.5 rounded-2xl transition-all ${isActive ? 'bg-teal-50 text-teal-700 scale-105' : ''}`}>
                 {item.icon}
               </div>
-              <span className="text-[10px] mt-0.5 tracking-tight">{item.label}</span>
+              <span className="text-[10px] mt-0.5 tracking-tight leading-none">{item.label}</span>
             </button>
           );
         })}

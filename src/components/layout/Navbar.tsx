@@ -18,20 +18,20 @@ export const Navbar: React.FC<NavbarProps> = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 pt-safe">
+      <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-14 sm:h-16">
           {/* Logo & School Branding */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 text-white flex items-center justify-center shadow-md shadow-teal-700/20">
-              <School className="w-5 h-5" />
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 text-white flex items-center justify-center shadow-md shadow-teal-700/20 flex-shrink-0">
+              <School className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <span className="text-base font-bold text-slate-900 tracking-tight leading-tight block">
-                IDN Keuangan Santri
+              <span className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight block">
+                Portal Bendahara
               </span>
-              <span className="text-[11px] text-slate-500 font-medium hidden sm:block">
-                Sistem Belanja & Tabungan Asrama
+              <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block">
+                Keuangan & Tabungan Santri
               </span>
             </div>
           </div>
