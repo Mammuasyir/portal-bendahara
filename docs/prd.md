@@ -1,60 +1,70 @@
 # Product Requirements Document (PRD)
 
 ## 1. Product Background & Problem Statement
-Sekolah berasrama (*boarding school*) menghadapi friksi operasional finansial harian pada dua area utama:
-1. **Penagihan & Pembayaran SPP**: Rekonsiliasi manual oleh Tata Usaha (TU), keterlambatan pembayaran orang tua akibat ketiadaan notifikasi/reminder otomatis, dan kurangnya transparansi arus kas pengeluaran sekolah.
-2. **Transaksi Finansial Siswa (Kantin)**: Uang tunai fisik berisiko hilang/dicuri di lingkungan asrama, orang tua tidak dapat memantau uang saku harian anak, serta pengelola kantin kesulitan merekap pembukuan harian.
+Sekolah berasrama (*boarding school*) dan pesantren menghadapi tantangan finansial harian pada tiga pilar utama:
+1. **Penagihan & Pelunasan SPP 12 Bulan**: Rekonsiliasi manual tagihan SPP bulanan, kebutuhan transparansi status bayar santri per tahun ajaran, serta keterlambatan pembayaran akibat minimnya notifikasi langsung ke orang tua.
+2. **Pengelolaan Saldo Tabungan & Rekening Santri**: Memisahkan alur titipan uang saku tunai harian santri di loket bendahara dengan setoran dana SPP santri yang masuk via transfer Virtual Account Bank (VA).
+3. **Belanja Santri Cashless di Kantin / Koperasi**: Menghilangkan risiko kehilangan uang tunai fisik santri dan mempercepat pencatatan kasir POS belanja santri.
 
-**Solusi**: Aplikasi web terpadu yang mendigitalisasi penagihan SPP (dengan status notifikasi WA & rekap pengeluaran) serta ekosistem kantin *cashless* berbasis saldo digital dan QR payment.
+**Solusi**: Aplikasi web terpadu Portal Bendahara yang mendigitalisasi penagihan & pelunasan SPP otomatis (via pemotongan saldo tabungan), pengelolaan tabungan santri, kasir belanja santri, serta pengiriman notifikasi WhatsApp otomatis ke wali santri via Evolution API.
 
 ---
 
 ## 2. Target Personas & Role Matrix
 
-| Role | Deskripsi & Backend Endpoint | Kebutuhan Utama | Batasan Akses |
+| Role | Backend Role ID / Endpoint | Kebutuhan Utama | Batasan Akses |
 | :--- | :--- | :--- | :--- |
-| **Admin / Bendahara TU** (`admin`) | Pengurus keuangan sekolah (`/api/staff/belanja/*`, `/api/staff/me`) | Rekapitulasi SPP seluruh siswa, input & kelola buku pengeluaran sekolah, monitoring saldo & arus kas kantin global | Akses administratif penuh ke seluruh modul keuangan sekolah |
-| **Staff Kantin / Kasir** (`canteen_staff`) | Petugas loket & kasir kantin (`/api/staff/save-money/*`) | Transaksi POS belanja santri (scan QR/nama), setor/top-up saldo santri di loket, riwayat transaksi kasir | Hanya modul POS kasir kantin, top-up saldo, dan mutasi santri |
-| **Orang Tua / Wali** (`parent`) | Wali santri asrama | Melihat tagihan SPP anak, membayar SPP via gateway, top-up saldo saku anak, memantau riwayat pengeluaran santri | Hanya data anak/santri yang terhubung |
-| **Siswa / Santri** (`student`) | Santri yang tinggal di asrama | Mengecek saldo kantin pribadi, menampilkan QR ID santri untuk discan di kasir | Hanya saldo & riwayat saku pribadi |
+| **Admin / Bendahara TU** (`admin`) | Role 1, 2, 4 (`/api/staff/save-money/*`, `/api/staff/whatsapp/send`) | Rekapitulasi SPP 12 bulan santri, eksekusi pemotongan saldo untuk pelunasan SPP, input setoran uang saku, penarikan uang saku santri, dan laporan belanja | Akses administratif penuh ke seluruh modul keuangan |
+| **Staff Kasir / Kantin** (`canteen_staff`) | Role 3 (`/api/staff/belanja-santri/*`) | Transaksi POS kasir belanja santri, pencarian santri via NISN/nama, rekap belanja harian | Fokus pada transaksi belanja santri dan riwayat kasir |
+| **Orang Tua / Wali** (`parent`) | Wali Santri | Menerima notifikasi WhatsApp setiap mutasi tabungan & pelunasan SPP, melakukan transfer SPP ke Bank VA | Notifikasi otomatis ke nomor WhatsApp yang terdaftar |
+| **Siswa / Santri** (`student`) | Role 0 | Transaksi belanja santri di kantin, mutasi saldo uang saku | Data saldo dan riwayat pribadi |
 
 ---
 
 ## 3. Functional Requirements
 
-### 3.1. Modul Autentikasi & Otorisasi
-- **FR-AUTH-01**: Multi-role login terintegrasi Backend Staff API (`POST /api/staff/login`): Admin TU, Staff Kantin, Orang Tua, dan Santri.
-- **FR-AUTH-02**: Halaman login terpisah dari tampilan dashboard dengan proteksi token session.
-- **FR-AUTH-03**: Auto-redirect ke dashboard spesifik role (`/admin`, `/canteen-staff`, `/parent`, `/student`) setelah otentikasi.
-- **FR-AUTH-04**: Role guard pada setiap route halaman (`<ProtectedRoute allowedRoles={[...]} />`).
+### 3.1. Modul Autentikasi & Session
+- **FR-AUTH-01**: Login terintegrasi Backend API (`POST /api/login`) dengan token Bearer Session.
+- **FR-AUTH-02**: Otomatis memuat profil pengguna aktif via `GET /api/user`.
+- **FR-AUTH-03**: Role guard pada setiap menu navigasi dengan fallback sesi aman.
 
-### 3.2. Modul SPP & Pengeluaran Sekolah
-- **FR-SPP-01**: Dashboard status tagihan SPP (Status: `Lunas`, `Belum Bayar`, `Jatuh Tempo`).
-- **FR-SPP-02**: Pembayaran SPP digital melalui simulasi Payment Gateway dengan modal konfirmasi.
-- **FR-SPP-03**: Riwayat pembayaran SPP dengan filter bulan dan tahun ajaran.
-- **FR-SPP-04**: Status notifikasi WhatsApp (*read-only*) untuk transparansi pengiriman reminder tagihan.
-- **FR-SPP-05**: Manajemen Pengeluaran Sekolah (Khusus Admin/TU):
-  - CRUD pencatatan pengeluaran (Nama pengeluaran, nominal, tanggal, kategori, keterangan/bukti).
-  - Kategori standar: Operasional, Gaji, Sarana, Konsumsi, Lain-lain (*baseline assumption*).
-  - Filter pengeluaran berdasarkan rentang tanggal dan kategori.
+### 3.2. Modul Rekap & Pelunasan SPP 12 Bulan
+- **FR-SPP-01**: Tampilan matriks rekapitulasi SPP 12 bulan (Juli s/d Juni) untuk setiap santri.
+- **FR-SPP-02**: Ketentuan Tahun Ajaran (*Thang*):
+  - Format `thang`: `{tahun_awal}_{semester}` (contoh `2025_1`, `2025_2`, `2026_1`, `2026_2`).
+  - SPP dihitung 12 bulan penuh berbasis `baseYear` (tahun awal dari `thang`).
+- **FR-SPP-03**: Penentuan Status Bulan SPP:
+  - `Lunas` (🟢): Terdapat transaksi penarikan saldo tabungan bertag `spp` (`kategori: "0"` / `Mengambil (-)`).
+  - `Menunggak` (🔴): Bulan tagihan yang telah lewat masa jatuh tempo (tanggal 10) namun belum dibayar.
+  - `Belum Jatuh Tempo` (⚪): Bulan tagihan di masa mendatang.
+- **FR-SPP-04**: Metode Pembayaran Tunggal:
+  - Pelunasan SPP di Dashboard SPP dikunci murni pada **Potong Saldo Tabungan Santri** (`kategori: "0"`).
+  - Sistem menampilkan saldo tabungan terkini santri, nominal SPP, dan estimasi sisa saldo.
+  - Tombol simpan otomatis **Disabled** jika saldo tabungan santri tidak mencukupi.
 
-### 3.3. Modul Kantin Cashless
-- **FR-KTN-01**: Tampilan saldo *cashless* real-time pada header/dashboard.
-- **FR-KTN-02**: Top-up saldo kantin (Nominal minimal `Rp50.000`, opsi nominal cepat + input nominal kustom).
-- **FR-KTN-03**: Histori mutasi saldo gabungan (Top-up dan transaksi belanja dalam satu linimasa dengan badge pembeda tipe transaksi).
-- **FR-KTN-04**: Transaksi Kasir / QR Payment:
-  - Tampilan QR/Barcode identitas siswa untuk discan di kasir kantin.
-  - Simulasi scan & pembayaran instan dengan validasi kecukupan saldo.
+### 3.3. Modul Tabungan & Rekening Santri
+- **FR-TAB-01**: Sinkronisasi saldo riil santri dari mutasi API `GET /api/staff/save-money/init`.
+- **FR-TAB-02**: Setoran Uang Saku Santri (+):
+  - Form Setor (+) admin difokuskan murni untuk setoran uang saku titipan wali santri di loket bendahara.
+  - Top-up SPP dialihkan murni via integrasi transfer Bank VA santri.
+- **FR-TAB-03**: Penarikan Saldo Santri (-):
+  - Opsi penarikan uang saku tunai santri.
+  - Opsi penarikan untuk pelunasan SPP santri.
+  - Validasi saldo tidak boleh negatif (`saldo >= nominal_penarikan`).
 
-### 3.4. Role-Based Views & Dashboard
-- **FR-VIEW-01 (Orang Tua)**: Tab ringkasan anak, tagihan SPP aktif, tombol bayar SPP, saldo kantin anak, tombol top-up kantin, dan histori gabungan anak.
-- **FR-VIEW-02 (Siswa)**: Kartu saldo kantin, QR Code pembayaran, riwayat jajan/transaksi harian.
-- **FR-VIEW-03 (Admin/TU)**: Statistik total pemasukan SPP vs pengeluaran sekolah, daftar penunggak SPP, kelola buku pengeluaran, rekap omzet transaksi kantin.
+### 3.4. Modul Belanja Santri (POS Kasir)
+- **FR-BLJ-01**: Kasir belanja santri terintegrasi `POST /api/staff/belanja-santri/store`.
+- **FR-BLJ-02**: Pencarian cepat santri via NISN, Nama, atau Filter Kelas.
+- **FR-BLJ-03**: Input nominal belanja, verifikasi kecukupan saldo santri, dan pencatatan riwayat transaksi belanja.
 
-### 3.5. Komponen Pendukung
-- **FR-COM-01**: Modal konfirmasi sebelum eksekusi finansial (Bayar SPP, Top Up Saldo, Simpan Pengeluaran).
-- **FR-COM-02**: Penanganan state terpadu: Loading skeleton/spinner, empty state dengan ilustrasi/pesan jelas, dan error handling banner.
-- **FR-COM-03**: Dataset realistis (*seed mock data*) untuk keperluan demonstrasi interaktif.
+### 3.5. Modul Notifikasi WhatsApp Otomatis
+- **FR-WA-01**: Integrasi endpoint `POST /api/staff/whatsapp/send` via Evolution API.
+- **FR-WA-02**: Nomor tujuan diambil secara dinamis dari properti `phone` user JSON santri (format: `08xxx`, `628xxx`, atau `+62xxx`).
+- **FR-WA-03**: Notifikasi otomatis dikirimkan setiap:
+  1. Setoran Uang Saku (+) berhasil dicatat.
+  2. Penarikan Uang Saku (-) berhasil dicatat.
+  3. Pelunasan SPP bulanan via Potong Saldo berhasil dicatat.
+- **FR-WA-04**: Format pesan profesional mencantumkan nama santri, NISN, nominal, rincian sisa saldo, waktu transaksi, dan ucapan resmi.
 
 ---
 
@@ -62,43 +72,31 @@ Sekolah berasrama (*boarding school*) menghadapi friksi operasional finansial ha
 
 ```mermaid
 flowchart TD
-    A[Mulai Transaksi Finansial] --> B{Validasi Frontend}
-    B -- Saldo Cukup / Min Top Up Rp50.000 --> C[Tampilkan Modal Konfirmasi]
-    B -- Tidak Valid --> D[Tampilkan Pesan Validasi Error]
-    C --> E{User Konfirmasi?}
-    E -- Ya --> F[Panggil Mock Service Adapter]
-    E -- Batal --> G[Tutup Modal Tanpa Perubahan]
-    F --> H[Update State Saldo & Tambah Histori Mutasi]
+    A[Mulai Transaksi Finansial] --> B{Pilih Jenis Aksi}
+    B -- Setor Uang Saku --> C[Input Nominal & Catatan]
+    B -- Tarik Uang Saku / SPP --> D{Cek Saldo Tabungan Santri}
+    D -- Saldo < Nominal --> E[Disable Tombol / Munculkan Alert Kurang Saldo]
+    D -- Saldo >= Nominal --> F[Buka Modal Konfirmasi]
+    C --> F
+    F --> G{User Konfirmasi?}
+    G -- Ya --> H[Kirim FormData ke Backend API]
+    G -- Batal --> I[Tutup Modal]
+    H --> J[Update Saldo & Rekap Lokal]
+    J --> K{Apakah Santri Memiliki No. Phone?}
+    K -- Ya --> L[Kirim Notifikasi WhatsApp via API]
+    K -- Tidak --> M[Selesai]
+    L --> M
 ```
 
-1. **Aturan Saldo**: Saldo kantin siswa tidak boleh bernilai negatif (`saldo >= 0`). Transaksi ditolak jika saldo tidak mencukupi.
-2. **Aturan Top-up**: Minimal top-up adalah `Rp50.000`. Nilai di bawah threshold akan ditolak oleh validasi form.
-3. **Modal Konfirmasi Wajib**: Tidak ada mutasi finansial yang dapat dieksekusi tanpa konfirmasi eksplisit dari pengguna.
-4. **Isolasi Data Siswa**: Siswa dan Orang Tua hanya memiliki akses *read/write* terhadap entitas relasi milik mereka sendiri.
+1. **Aturan Saldo Tabungan**: Saldo tabungan santri tidak boleh bernilai negatif (`saldo >= 0`). Transaksi penarikan/pemotongan SPP ditolak jika saldo tidak mencukupi.
+2. **Kategori Sirkulasi API**:
+   - `kategori: "1"` untuk Pemasukan / Setor Tabungan (`Menabung (+)`).
+   - `kategori: "0"` untuk Pengeluaran / Potong Saldo / Tarik Tabungan (`Mengambil (-)`).
+3. **Modal Konfirmasi Wajib**: Setiap aksi penarikan, setoran, dan pembayaran SPP wajib melalui modal konfirmasi sebelum payload dikirimkan.
+4. **Isolasi Data**: Data rekening dan mutasi dipetakan secara akurat per user ID & NISN santri.
 
 ---
 
-## 5. Known Facts, Assumptions & UNKNOWNs
-
-### A. Known Facts (Fakta Pasti)
-- Sistem berbasis frontend-only yang mengonsumsi REST API via JSON.
-- Multi-role: Orang Tua, Siswa, Admin/TU.
-- Fitur utama terbatas pada 4 modul: Auth, SPP & Pengeluaran, Kantin Cashless, Role-Based Views.
-- Penulisan nominal rupiah dan tanggal menggunakan format standar Indonesia.
-
-### B. Working Assumptions (Asumsi Kerja Sementara)
-- Auth menggunakan skema token berbasis memori/mock credential untuk keperluan demo.
-- Kategori pengeluaran sekolah mencakup: `Operasional`, `Gaji`, `Sarana`, `Konsumsi`, `Lain-lain`.
-- Top-up saldo kantin disimulasikan melalui modal payment channel (Virtual Account / QRIS Mock).
-
-### C. UNKNOWNs (Membutuhkan Konfirmasi Masa Depan)
-- *[UNKNOWN-01]*: Mekanisme scanning kasir kantin di dunia nyata (apakah kasir memiliki antarmuka terpisah atau siswa yang scan QR statis stan kantin). Solusi saat ini: sediakan view QR Siswa + simulasi bayar cepat.
-- *[UNKNOWN-02]*: Integrasi provider WhatsApp Gateway (e.g. Fonnte, Waba, Twilio) — saat ini UI menampilkan status *read-only* dari mock response.
-
----
-
-## 6. Out of Scope (Batasan Eksternal)
-- Pembangunan server backend / database SQL/NoSQL nyata.
-- Integrasi SDK Payment Gateway riil di lingkungan production.
-- Fitur akademik (nilai, presensi kelas, rapor siswa).
-- Manajemen inventaris stok detail kantin (SKU/barcode fisik barang dagangan).
+## 5. Out of Scope
+- Modifikasi langsung arsitektur database backend Laravel / core engine Evolution API.
+- Fitur penilaian akademik dan rapor santri.
