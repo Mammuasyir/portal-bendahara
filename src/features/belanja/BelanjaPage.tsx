@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { belanjaService } from '../../services/belanjaService';
+import { tabunganService } from '../../services/tabunganService';
+import { whatsappService } from '../../services/whatsappService';
 import {
   StudentUser,
   BelanjaTransaction,
+  SaveMoneyTransaction,
   CreateBelanjaPayload,
 } from '../../types/backend';
 import { formatRupiah } from '../../utils/formatters';
@@ -31,6 +34,7 @@ const MENU_PRESETS = [
 export const BelanjaPage: React.FC = () => {
   const [students, setStudents] = useState<StudentUser[]>([]);
   const [saldoPerSiswa, setSaldoPerSiswa] = useState<Record<string, number>>({});
+  const [riwayatPerSiswa, setRiwayatPerSiswa] = useState<Record<string, SaveMoneyTransaction[]>>({});
   const [lockedTag, setLockedTag] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BelanjaTransaction[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -57,13 +61,17 @@ export const BelanjaPage: React.FC = () => {
   const loadBelanjaData = async () => {
     setIsLoading(true);
     try {
-      const [initRes, recentRes] = await Promise.all([
+      const [initRes, recentRes, tabunganInitRes] = await Promise.all([
         belanjaService.init(),
         belanjaService.getRecent(),
+        tabunganService.init().catch(() => null),
       ]);
 
       setStudents(initRes.users || []);
       setSaldoPerSiswa(initRes.saldo_per_siswa || {});
+      if (tabunganInitRes && tabunganInitRes.riwayat_per_siswa) {
+        setRiwayatPerSiswa(tabunganInitRes.riwayat_per_siswa);
+      }
       setLockedTag(initRes.locked_tag);
       if (initRes.locked_tag) {
         setTag(initRes.locked_tag);
@@ -84,17 +92,78 @@ export const BelanjaPage: React.FC = () => {
     loadBelanjaData();
   }, []);
 
+  const getStudentTransactions = (student: StudentUser): SaveMoneyTransaction[] => {
+    if (!riwayatPerSiswa) return [];
+    const uId = String(student.id);
+    const uNisn = String(student.nisn);
+    if (riwayatPerSiswa[uId]?.length) return riwayatPerSiswa[uId];
+    if (riwayatPerSiswa[uNisn]?.length) return riwayatPerSiswa[uNisn];
+
+    for (const [, list] of Object.entries(riwayatPerSiswa)) {
+      if (
+        Array.isArray(list) &&
+        list.some(
+          (t) =>
+            Number(t.user_id) === Number(student.id) ||
+            (student.name && t.nama_siswa?.toLowerCase() === student.name.toLowerCase())
+        )
+      ) {
+        return list;
+      }
+    }
+    return [];
+  };
+
+  const getStudentBalance = (student: StudentUser | null): number => {
+    if (!student) return 0;
+    const txs = getStudentTransactions(student);
+
+    // 1. Jika ada transaksi di riwayat, cek saldo_sesudah terakhir
+    if (txs.length > 0) {
+      const lastTx = txs[txs.length - 1];
+      if (typeof lastTx.saldo_sesudah === 'number' && lastTx.saldo_sesudah >= 0) {
+        return lastTx.saldo_sesudah;
+      }
+
+      // Hitung mutasi masuk - keluar
+      let computed = 0;
+      txs.forEach((t) => {
+        const isOut =
+          t.jenis_transaksi?.includes('Mengambil') ||
+          t.jenis_transaksi?.includes('Tarik') ||
+          t.jenis_transaksi?.includes('-') ||
+          String(t.money_flag_id) === '2' ||
+          (t.keterangan && t.keterangan.toLowerCase().includes('penarikan')) ||
+          (t.keterangan && t.keterangan.toLowerCase().includes('pemotongan')) ||
+          (t.keterangan && t.keterangan.toLowerCase().includes('potong saldo'));
+        const amt = Math.abs(Number(t.jumlah || 0));
+        if (isOut) computed -= amt;
+        else computed += amt;
+      });
+      return Math.max(0, computed);
+    }
+
+    // 2. Cek saldo_per_siswa dari belanjaService.init
+    const rawSaldo =
+      saldoPerSiswa[String(student.id)] ??
+      saldoPerSiswa[String(student.nisn)] ??
+      (student as any).balance ??
+      (student as any).saldo ??
+      0;
+
+    // Pastikan tidak minus (>= 0)
+    return Math.max(0, Number(rawSaldo) || 0);
+  };
+
   const filteredStudents = students.filter(
     (s) =>
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.nisn.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const selectedStudentBalance = selectedStudent
-    ? saldoPerSiswa[String(selectedStudent.id)] || 0
-    : 0;
-
+  const selectedStudentBalance = getStudentBalance(selectedStudent);
   const requiresProof = sirkulasi > 50000;
+  const isInsufficient = selectedStudentBalance < sirkulasi;
 
   const handleOpenConfirm = () => {
     if (!selectedStudent) {
@@ -103,6 +172,12 @@ export const BelanjaPage: React.FC = () => {
     }
     if (sirkulasi <= 0) {
       alert('Nominal belanja harus lebih dari Rp0.');
+      return;
+    }
+    if (isInsufficient) {
+      alert(
+        `Saldo santri tidak mencukupi untuk transaksi belanja!\n\nSaldo Saat Ini: ${formatRupiah(selectedStudentBalance)}\nTotal Belanja: ${formatRupiah(sirkulasi)}\nKekurangan: ${formatRupiah(sirkulasi - selectedStudentBalance)}`
+      );
       return;
     }
     if (requiresProof && !ketMoney.trim()) {
@@ -130,6 +205,46 @@ export const BelanjaPage: React.FC = () => {
       };
 
       const res = await belanjaService.store(payload);
+
+      // Kirim Notifikasi WhatsApp Otomatis ke Nomor Santri / Wali jika tersedia
+      if (selectedStudent.phone) {
+        try {
+          const sisaBal = Math.max(0, selectedStudentBalance - sirkulasi);
+          const timeStr = new Date().toLocaleString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+
+          const msg = [
+            `🔔 *Pemberitahuan Transaksi Belanja Santri*`,
+            ``,
+            `Yth. Wali Santri dari:`,
+            `👤 *Nama:* ${selectedStudent.name}`,
+            `🆔 *NISN:* ${selectedStudent.nisn}`,
+            ``,
+            `🛍️ *Lokasi:* Stan ${(lockedTag || tag).toUpperCase()}`,
+            `💰 *Nominal Belanja:* ${formatRupiah(sirkulasi)}`,
+            `💳 *Sisa Saldo Tabungan:* ${formatRupiah(sisaBal)}`,
+            ketMoney ? `📝 *Rincian:* ${ketMoney}` : '',
+            `📅 *Waktu:* ${timeStr} WIB`,
+            ``,
+            `_Notifikasi otomatis Kasir Belanja Pesantren._`,
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          await whatsappService.sendMessage({
+            phone: selectedStudent.phone,
+            message: msg,
+          });
+        } catch (waErr) {
+          console.warn('Pengiriman WhatsApp notice:', waErr);
+        }
+      }
+
       setToastMessage(res.message || 'Transaksi belanja berhasil disimpan!');
       setTimeout(() => setToastMessage(null), 5000);
 
@@ -223,7 +338,7 @@ export const BelanjaPage: React.FC = () => {
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {filteredStudents.map((student) => {
               const isSelected = selectedStudent?.id === student.id;
-              const studentBalance = saldoPerSiswa[String(student.id)] || 0;
+              const studentBalance = getStudentBalance(student);
               return (
                 <button
                   key={student.id}
@@ -237,7 +352,9 @@ export const BelanjaPage: React.FC = () => {
                 >
                   <div className="flex justify-between items-start">
                     <span className="text-xs font-bold text-slate-900">{student.name}</span>
-                    <span className="text-xs font-bold text-teal-700">{formatRupiah(studentBalance)}</span>
+                    <span className={`text-xs font-bold ${studentBalance === 0 ? 'text-slate-400' : 'text-teal-700'}`}>
+                      {formatRupiah(studentBalance)}
+                    </span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">NISN: {student.nisn}</p>
                 </button>
@@ -246,12 +363,12 @@ export const BelanjaPage: React.FC = () => {
           </div>
 
           {selectedStudent && (
-            <div className="p-3 bg-teal-50 rounded-2xl border border-teal-200 text-xs space-y-1">
-              <span className="text-[10px] text-teal-700 font-semibold uppercase block">Santri Terpilih:</span>
-              <span className="font-bold text-slate-900 text-sm block">{selectedStudent.name}</span>
-              <div className="flex justify-between text-slate-600 pt-1 border-t border-teal-100">
-                <span>Saldo Saku Saat Ini:</span>
-                <strong className="text-teal-800">{formatRupiah(selectedStudentBalance)}</strong>
+            <div className="p-3.5 bg-teal-50/80 rounded-2xl border border-teal-200 text-xs space-y-1.5">
+              <span className="text-[10px] text-teal-700 font-bold uppercase block tracking-wider">Santri Terpilih:</span>
+              <span className="font-extrabold text-slate-900 text-sm block">{selectedStudent.name}</span>
+              <div className="flex justify-between items-center text-slate-600 pt-1.5 border-t border-teal-200/60">
+                <span className="font-semibold">Saldo Uang Saku:</span>
+                <strong className="text-teal-800 text-sm">{formatRupiah(selectedStudentBalance)}</strong>
               </div>
             </div>
           )}
@@ -299,14 +416,50 @@ export const BelanjaPage: React.FC = () => {
                 <select
                   value={tag}
                   onChange={(e) => setTag(e.target.value)}
-                  disabled={!!lockedTag}
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white disabled:bg-slate-100"
+                  disabled={Boolean(lockedTag)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
                 >
                   <option value="kantin">Kantin Utama</option>
                   <option value="kafe">Kafe Asrama</option>
                 </select>
               </div>
             </div>
+
+            {/* Preview Saldo Kasir & Estimasi Sisa */}
+            {selectedStudent && sirkulasi > 0 && (
+              <div
+                className={`p-3 rounded-2xl border text-xs space-y-1.5 transition-all ${
+                  isInsufficient
+                    ? 'bg-rose-50 border-rose-200 text-rose-900'
+                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-slate-600">Saldo Santri:</span>
+                  <span className="font-extrabold">{formatRupiah(selectedStudentBalance)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-slate-600">Total Belanja:</span>
+                  <span className="font-bold text-rose-600">-{formatRupiah(sirkulasi)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
+                  <span className="font-semibold text-slate-600">Estimasi Sisa Saldo:</span>
+                  <span className={`font-extrabold ${isInsufficient ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    {formatRupiah(selectedStudentBalance - sirkulasi)}
+                  </span>
+                </div>
+
+                {isInsufficient && (
+                  <div className="mt-1.5 p-2 bg-rose-100/90 rounded-xl border border-rose-300 text-rose-800 text-[11px] font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-700" />
+                    <span>
+                      Saldo santri tidak mencukupi untuk transaksi ini! (Kekurangan:{' '}
+                      {formatRupiah(sirkulasi - selectedStudentBalance)})
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <Input
               label={`Keterangan Belanja ${requiresProof ? '(WAJIB karena > Rp50.000)' : '(Opsional)'}`}
@@ -355,14 +508,18 @@ export const BelanjaPage: React.FC = () => {
                 Reset
               </Button>
               <Button
-                variant="secondary"
+                variant={isInsufficient ? 'outline' : 'secondary'}
                 size="md"
                 leftIcon={<ShoppingBag className="w-4 h-4" />}
                 onClick={handleOpenConfirm}
-                disabled={sirkulasi <= 0 || !selectedStudent}
-                className="flex-1 sm:flex-none"
+                disabled={sirkulasi <= 0 || !selectedStudent || isInsufficient}
+                className={`flex-1 sm:flex-none ${
+                  isInsufficient
+                    ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
+                    : ''
+                }`}
               >
-                Simpan Transaksi Belanja
+                {isInsufficient ? 'Saldo Tidak Cukup' : 'Simpan Transaksi Belanja'}
               </Button>
             </div>
           </div>
